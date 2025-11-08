@@ -10,6 +10,7 @@ const corsHeaders = {
 interface QRAcceptRequest {
   offerId: string;
   consumerCardInstanceId: string;
+  sig: string;
 }
 
 async function verifyHMAC(message: string, signature: string, secret: string): Promise<boolean> {
@@ -25,7 +26,16 @@ async function verifyHMAC(message: string, signature: string, secret: string): P
     ["sign", "verify"]
   );
 
-  const signatureBytes = new Uint8Array(signature.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const normalizedSignature = signature.toLowerCase();
+  if (normalizedSignature.length % 2 !== 0) {
+    return false;
+  }
+  const signatureChunks = normalizedSignature.match(/.{1,2}/g);
+  if (!signatureChunks) {
+    return false;
+  }
+
+  const signatureBytes = new Uint8Array(signatureChunks.map(byte => parseInt(byte, 16)));
   return await crypto.subtle.verify("HMAC", key, signatureBytes, messageData);
 }
 
@@ -61,7 +71,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { offerId, consumerCardInstanceId }: QRAcceptRequest = await req.json();
+    const { offerId, consumerCardInstanceId, sig }: QRAcceptRequest = await req.json();
+
+    if (!sig) {
+      return new Response(
+        JSON.stringify({ error: "Missing signature" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     const { data: offer, error: offerError } = await supabaseAnon
       .from("qr_offers")
@@ -102,6 +122,20 @@ Deno.serve(async (req: Request) => {
     if (offer.owner_id === user.id) {
       return new Response(
         JSON.stringify({ error: "Cannot trade with yourself" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const secret = Deno.env.get("QR_HMAC_SECRET") ?? "default-secret-change-in-production";
+    const payload = `${offerId}|${offer.owner_id}|${offer.card_instance_id}|${offer.created_at}`;
+    const isSignatureValid = await verifyHMAC(payload, sig, secret);
+
+    if (!isSignatureValid || offer.hmac !== sig) {
+      return new Response(
+        JSON.stringify({ error: "Invalid signature" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
