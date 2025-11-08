@@ -11,15 +11,52 @@ interface GameSubmitRequest {
   game: "runner" | "memory";
   score: number;
   seed: string;
-  clientHash: string;
+  signature: string;
 }
 
-async function calculateHash(message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+const encoder = new TextEncoder();
+
+async function importSignatureKey(secret: string) {
+  return crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+async function verifySignature({
+  game,
+  seed,
+  userId,
+  signature,
+}: {
+  game: string;
+  seed: string;
+  userId: string;
+  signature: string;
+}): Promise<boolean> {
+  const secret = Deno.env.get("GAME_SIGNATURE_SECRET");
+  if (!secret) {
+    throw new Error("Missing GAME_SIGNATURE_SECRET environment variable");
+  }
+
+  const key = await importSignatureKey(secret);
+  const message = `${game}|${seed}|${userId}`;
+  const signatureBuffer = base64ToArrayBuffer(signature);
+
+  return crypto.subtle.verify("HMAC", key, signatureBuffer, encoder.encode(message));
 }
 
 function calculateStars(game: string, score: number): number {
@@ -67,11 +104,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { game, score, seed, clientHash }: GameSubmitRequest = await req.json();
+    const { game, score, seed, signature }: GameSubmitRequest = await req.json();
 
-    const serverHash = await calculateHash(`${game}|${score}|${seed}|${user.id}`);
+    const isValidSignature = await verifySignature({
+      game,
+      seed,
+      userId: user.id,
+      signature,
+    });
 
-    if (serverHash !== clientHash) {
+    if (!isValidSignature) {
       await supabase
         .from("events")
         .insert({
@@ -81,13 +123,13 @@ Deno.serve(async (req: Request) => {
             game,
             score,
             seed,
-            client_hash: clientHash,
-            server_hash: serverHash,
+            signature,
+            reason: "invalid_signature",
           },
         });
 
       return new Response(
-        JSON.stringify({ error: "Hash verification failed" }),
+        JSON.stringify({ error: "Signature verification failed" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -104,7 +146,7 @@ Deno.serve(async (req: Request) => {
         game,
         score,
         seed,
-        proof: clientHash,
+        proof: signature,
         stars,
       })
       .select()
