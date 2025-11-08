@@ -104,6 +104,7 @@ Deno.serve(async (req: Request) => {
         card_instance_id: cardInstanceId,
         hmac: hmac,
         expires_at: expiresAt,
+        timestamp_used: timestamp,
       });
 
     if (insertError) {

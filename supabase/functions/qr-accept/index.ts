@@ -129,15 +129,47 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const secret = Deno.env.get("QR_HMAC_SECRET") ?? "default-secret-change-in-production";
-    const payload = `${offerId}|${offer.owner_id}|${offer.card_instance_id}|${offer.created_at}`;
+    const secret = Deno.env.get("QR_HMAC_SECRET");
+    if (!secret) {
+      console.error("QR accept misconfiguration: QR_HMAC_SECRET is not set");
+      await supabaseAnon
+        .from("events")
+        .insert({
+          user_id: user.id,
+          event_type: "hmac_secret_missing",
+          event_data: {
+            function: "qr-accept",
+            offer_id: offerId,
+          },
+        });
+      return new Response(
+        JSON.stringify({ error: "Server misconfiguration" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const payload = `${offerId}|${offer.owner_id}|${offer.card_instance_id}|${offer.timestamp_used}`;
     const isSignatureValid = await verifyHMAC(payload, sig, secret);
 
     if (!isSignatureValid || offer.hmac !== sig) {
+      await supabaseAnon
+        .from("events")
+        .insert({
+          user_id: user.id,
+          event_type: "hmac_verification_failed",
+          event_data: {
+            offer_id: offerId,
+            consumer_id: user.id,
+            timestamp: new Date().toISOString(),
+          },
+        });
       return new Response(
         JSON.stringify({ error: "Invalid signature" }),
         {
-          status: 400,
+          status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
