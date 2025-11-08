@@ -85,6 +85,12 @@ export default function TradeScreen() {
         return;
       }
 
+      if (!payload.sig) {
+        Alert.alert('Błąd', 'Kod QR jest nieprawidłowy');
+        setProcessing(false);
+        return;
+      }
+
       const apiUrl = `${supabaseUrl}/functions/v1/qr-accept`;
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -95,6 +101,7 @@ export default function TradeScreen() {
         body: JSON.stringify({
           offerId: payload.offerId,
           consumerCardInstanceId: selectedCard.id,
+          sig: payload.sig,
         }),
       });
 
