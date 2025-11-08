@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert } from 'rea
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
-import * as Crypto from 'expo-crypto';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PLAYER_SIZE = 40;
@@ -28,10 +27,12 @@ export default function RunnerGame() {
   const [playerVelocity, setPlayerVelocity] = useState(0);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const { session } = useAuth();
   const router = useRouter();
   const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const seedRef = useRef(Date.now().toString());
+  const seedRef = useRef<string>('');
+  const signatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (gameStarted && !gameOver) {
@@ -113,14 +114,59 @@ export default function RunnerGame() {
     });
   };
 
-  const startGame = () => {
-    setGameStarted(true);
+  const fetchGameToken = async (): Promise<{ seed: string; signature: string }> => {
+    if (!session?.access_token) {
+      throw new Error('Brak aktywnej sesji użytkownika');
+    }
+
+    const apiUrl = `${supabaseUrl}/functions/v1/game-start`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ game: 'runner' }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Nie udało się pobrać tokenu gry');
+    }
+
+    return result as { seed: string; signature: string };
+  };
+
+  const startNewGame = async (): Promise<boolean> => {
+    if (gameLoopRef.current) {
+      clearInterval(gameLoopRef.current);
+      gameLoopRef.current = null;
+    }
+
+    setInitializing(true);
+    setGameStarted(false);
     setGameOver(false);
     setScore(0);
     setPlayerY(SCREEN_HEIGHT / 2);
     setPlayerVelocity(0);
     setObstacles([]);
-    seedRef.current = Date.now().toString();
+    seedRef.current = '';
+    signatureRef.current = null;
+
+    try {
+      const token = await fetchGameToken();
+      seedRef.current = token.seed;
+      signatureRef.current = token.signature;
+      setGameStarted(true);
+      return true;
+    } catch (error: any) {
+      console.error('Error starting game:', error);
+      Alert.alert('Błąd', error.message ?? 'Nie udało się rozpocząć gry');
+      return false;
+    } finally {
+      setInitializing(false);
+    }
   };
 
   const endGame = () => {
@@ -132,7 +178,16 @@ export default function RunnerGame() {
 
   const handleJump = () => {
     if (!gameStarted) {
-      startGame();
+      if (initializing) {
+        return;
+      }
+
+      void (async () => {
+        const started = await startNewGame();
+        if (started) {
+          setPlayerVelocity(JUMP_STRENGTH);
+        }
+      })();
       return;
     }
     if (!gameOver) {
@@ -143,7 +198,9 @@ export default function RunnerGame() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const hash = await calculateClientHash(score, seedRef.current);
+      if (!signatureRef.current || !seedRef.current) {
+        throw new Error('Brak ważnego tokenu gry. Spróbuj zagrać ponownie.');
+      }
 
       const apiUrl = `${supabaseUrl}/functions/v1/game-submit`;
       const response = await fetch(apiUrl, {
@@ -156,7 +213,7 @@ export default function RunnerGame() {
           game: 'runner',
           score,
           seed: seedRef.current,
-          clientHash: hash,
+          signature: signatureRef.current,
         }),
       });
 
@@ -179,15 +236,6 @@ export default function RunnerGame() {
     }
   };
 
-  const calculateClientHash = async (score: number, seed: string): Promise<string> => {
-    const message = `runner|${score}|${seed}|${session?.user?.id}`;
-    const hash = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      message
-    );
-    return hash;
-  };
-
   return (
     <TouchableOpacity
       style={styles.container}
@@ -208,8 +256,12 @@ export default function RunnerGame() {
         {!gameStarted && !gameOver && (
           <View style={styles.instructions}>
             <Text style={styles.instructionsTitle}>Tap Runner</Text>
-            <Text style={styles.instructionsText}>Dotknij ekranu aby skoczyć</Text>
-            <Text style={styles.instructionsText}>Unikaj przeszkód!</Text>
+            <Text style={styles.instructionsText}>
+              {initializing ? 'Ładowanie gry...' : 'Dotknij ekranu aby skoczyć'}
+            </Text>
+            {!initializing && (
+              <Text style={styles.instructionsText}>Unikaj przeszkód!</Text>
+            )}
           </View>
         )}
 
@@ -219,8 +271,9 @@ export default function RunnerGame() {
             <Text style={styles.gameOverScore}>Twój wynik: {score}</Text>
             <View style={styles.gameOverButtons}>
               <TouchableOpacity
-                style={styles.retryButton}
-                onPress={startGame}
+                style={[styles.retryButton, initializing && styles.submitButtonDisabled]}
+                onPress={() => { void startNewGame(); }}
+                disabled={initializing}
               >
                 <Text style={styles.retryButtonText}>Zagraj ponownie</Text>
               </TouchableOpacity>
