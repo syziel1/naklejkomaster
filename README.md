@@ -29,7 +29,7 @@ npm install
 
 ### 2. Konfiguracja Supabase
 
-Zmienne środowiskowe są już skonfigurowane w pliku `.env`:
+Zmienne środowiskowe aplikacji są już skonfigurowane w pliku `.env`:
 
 ```env
 EXPO_PUBLIC_SUPABASE_URL=https://dbayfxzkmaunafrrkpgw.supabase.co
@@ -37,6 +37,14 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=twój_anon_key
 ```
 
 ### 3. Zastosuj migracje (już wykonane)
+
+Edge Functions wymagają dodatkowo tajnego klucza HMAC do podpisywania jednorazowych ofert QR. Klucz nie powinien być przechowywany w repozytorium – ustaw go jako sekret środowiskowy w Supabase i rotuj poza kodem, np. za pomocą Supabase CLI:
+
+```bash
+supabase secrets set QR_HMAC_SECRET="super-bezpieczny-klucz"
+```
+
+Po aktualizacji klucza uruchom ponownie funkcję (deploy) aby wczytała nową wartość.
 
 Baza danych została już skonfigurowana z następującymi tabelami:
 - `users_extended` - rozszerzenie auth.users
