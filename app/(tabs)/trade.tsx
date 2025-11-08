@@ -4,7 +4,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from '@/lib/supabase';
 import { UserCard, QRPayload } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { QrCode, Camera, X } from 'lucide-react-native';
+import { QrCode as QrCodeIcon, Camera, X } from 'lucide-react-native';
+import QRCode from 'react-native-qrcode-svg';
 import Constants from 'expo-constants';
 
 const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -203,7 +204,7 @@ export default function TradeScreen() {
                 onPress={() => handleGenerateQR(selectedCard)}
                 disabled={processing}
               >
-                <QrCode size={24} color="#fff" />
+                <QrCodeIcon size={24} color="#fff" />
                 <Text style={styles.actionButtonText}>
                   {qrData ? 'Odśwież QR' : 'Generuj QR'}
                 </Text>
@@ -223,11 +224,17 @@ export default function TradeScreen() {
               <View style={styles.qrCard}>
                 <Text style={styles.qrTitle}>Twój kod QR</Text>
                 <View style={styles.qrPlaceholder}>
-                  <QrCode size={120} color="#10b981" />
+                  <View style={styles.qrWrapper}>
+                    <QRCode
+                      value={qrData}
+                      size={160}
+                      color="#10b981"
+                      backgroundColor="transparent"
+                    />
+                  </View>
                   <Text style={styles.qrNote}>Pokaż ten kod drugiej osobie</Text>
                   <Text style={styles.qrExpiry}>Kod wygasa po 2 minutach</Text>
                 </View>
-                <Text style={styles.qrData} numberOfLines={3}>{qrData}</Text>
               </View>
             )}
           </>
@@ -380,6 +387,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  qrWrapper: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#0f172a',
+  },
   qrNote: {
     fontSize: 12,
     color: '#9ca3af',
@@ -389,11 +401,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#ef4444',
     marginTop: 4,
-  },
-  qrData: {
-    fontSize: 10,
-    color: '#6b7280',
-    fontFamily: 'monospace',
   },
   scannerContainer: {
     flex: 1,
