@@ -39,48 +39,54 @@ export default function ChallengesScreen() {
   };
 
   const handleClaim = async (challengeId: string) => {
+    if (!session?.access_token) {
+      Alert.alert('Błąd', 'Brak aktywnej sesji. Zaloguj się ponownie.');
+      return;
+    }
+
     setClaiming(challengeId);
     try {
-      const { data, error } = await supabase
-        .from('challenge_claims')
-        .insert({
-          challenge_id: challengeId,
-          user_id: user!.id,
-          status: 'approved',
-        })
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === '23505') {
-          Alert.alert('Błąd', 'Już odebrałeś tę nagrodę dzisiaj');
-        } else {
-          throw error;
-        }
-        return;
-      }
-
       const apiUrl = `${supabaseUrl}/functions/v1/mint`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ challengeId: data.id }),
+        body: JSON.stringify({ challengeId }),
       });
 
-      const result = await response.json();
+      let result: any = null;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse claim response:', parseError);
+      }
 
       if (response.ok) {
-        Alert.alert('Sukces!', 'Nagroda została odebrana!');
+        const rewardMessage = (() => {
+          if (!result) return 'Nagroda została odebrana!';
+
+          if (result.reward?.type === 'xp') {
+            return `Zdobyto ${result.reward.amount} XP!`;
+          }
+
+          if (Array.isArray(result.cards) && result.cards.length > 0) {
+            return 'Nowe karty zostały dodane do kolekcji!';
+          }
+
+          return result.message || 'Nagroda została odebrana!';
+        })();
+
+        Alert.alert('Sukces!', rewardMessage);
         loadChallenges();
       } else {
-        Alert.alert('Błąd', result.error || 'Nie udało się odebrać nagrody');
+        const errorMessage = result?.error || 'Nie udało się odebrać nagrody';
+        Alert.alert('Błąd', errorMessage);
       }
     } catch (error: any) {
       console.error('Error claiming challenge:', error);
-      Alert.alert('Błąd', error.message || 'Wystąpił błąd');
+      Alert.alert('Błąd', error?.message || 'Wystąpił błąd');
     } finally {
       setClaiming(null);
     }
