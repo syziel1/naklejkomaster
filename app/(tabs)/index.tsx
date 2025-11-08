@@ -1,19 +1,30 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sparkles } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
 export default function HomeScreen() {
-  const { userExtended, profile, signOut } = useAuth();
+  const { userExtended, profile, signOut, loading } = useAuth();
   const router = useRouter();
 
   const levelProgress = profile ? ((profile.xp % 100) / 100) * 100 : 0;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Witaj!</Text>
+      </View>
+    );
+  }
+
+  const greeting = userExtended?.handle ? `Witaj, ${userExtended.handle}!` : 'Witaj!';
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Witaj, {userExtended?.handle}!</Text>
+          <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.subtitle}>Gotowy na przygodę?</Text>
         </View>
         <TouchableOpacity onPress={signOut} style={styles.signOutButton}>
@@ -133,6 +144,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#111827',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
   },
   header: {
     paddingTop: 60,
