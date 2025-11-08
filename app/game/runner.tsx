@@ -46,17 +46,13 @@ export default function RunnerGame() {
   }, [gameStarted, gameOver, playerY, playerVelocity, obstacles]);
 
   const updateGame = () => {
-    setPlayerVelocity(prev => prev + GRAVITY);
-    setPlayerY(prev => {
-      const newY = prev + playerVelocity;
-      if (newY > SCREEN_HEIGHT - 100 - PLAYER_SIZE) {
-        return SCREEN_HEIGHT - 100 - PLAYER_SIZE;
-      }
-      if (newY < 0) {
-        return 0;
-      }
-      return newY;
-    });
+    const newVelocity = playerVelocity + GRAVITY;
+    const unclampedY = playerY + newVelocity;
+    const maxY = SCREEN_HEIGHT - 100 - PLAYER_SIZE;
+    const newPlayerY = Math.min(Math.max(unclampedY, 0), maxY);
+
+    setPlayerVelocity(newVelocity);
+    setPlayerY(newPlayerY);
 
     setObstacles(prev => {
       const updated = prev.map(obs => ({
@@ -66,8 +62,8 @@ export default function RunnerGame() {
 
       const playerLeft = 50;
       const playerRight = 50 + PLAYER_SIZE;
-      const playerTop = playerY;
-      const playerBottom = playerY + PLAYER_SIZE;
+      const playerTop = newPlayerY;
+      const playerBottom = newPlayerY + PLAYER_SIZE;
 
       for (const obs of updated) {
         const obsLeft = obs.x;
