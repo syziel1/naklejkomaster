@@ -82,7 +82,17 @@ Deno.serve(async (req: Request) => {
     const timestamp = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 120000).toISOString();
 
-    const secret = Deno.env.get("QR_HMAC_SECRET") ?? "default-secret-change-in-production";
+    const secret = Deno.env.get("QR_HMAC_SECRET");
+    if (!secret) {
+      console.error("QR create misconfiguration: QR_HMAC_SECRET is not set");
+      return new Response(
+        JSON.stringify({ error: "Server misconfiguration" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
     const payload = `${offerId}|${user.id}|${cardInstanceId}|${timestamp}`;
     const hmac = await generateHMAC(payload, secret);
 
