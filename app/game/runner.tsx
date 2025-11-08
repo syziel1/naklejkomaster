@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert } from 'rea
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PLAYER_SIZE = 40;
@@ -29,7 +30,7 @@ export default function RunnerGame() {
   const [submitting, setSubmitting] = useState(false);
   const { session } = useAuth();
   const router = useRouter();
-  const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
+  const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const seedRef = useRef(Date.now().toString());
 
   useEffect(() => {
@@ -180,11 +181,11 @@ export default function RunnerGame() {
 
   const calculateClientHash = async (score: number, seed: string): Promise<string> => {
     const message = `runner|${score}|${seed}|${session?.user?.id}`;
-    const encoder = new TextEncoder();
-    const data = encoder.encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const hash = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      message
+    );
+    return hash;
   };
 
   return (
